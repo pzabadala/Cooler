@@ -23,11 +23,7 @@ void delay(int time)
 int main(void)
 {
     SystemInit();
-
-
 	GPIO_InitTypeDef gpio; // obiekt gpio z konfiguracja portow GPIO
-	//RCC_AHBPeriphResetCmd(RCC_AHBPeriph_GPIOA, ENABLE);
-
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 
     GPIO_StructInit(&gpio); // domyslna konfiguracja
