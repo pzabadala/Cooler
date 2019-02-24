@@ -28,11 +28,7 @@ int main(void)
 	GPIO_InitTypeDef gpio; // obiekt gpio z konfiguracja portow GPIO
 	//RCC_AHBPeriphResetCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 
-
-	RCC_APB2PeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
-	//RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-
-
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 
     GPIO_StructInit(&gpio); // domyslna konfiguracja
     gpio.GPIO_Pin = GPIO_Pin_5; // konfigurujemy pin 5
