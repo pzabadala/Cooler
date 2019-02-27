@@ -36,36 +36,38 @@ int main(void)
     SystemInit();
     ADC_InitTypeDef adc;
 	GPIO_InitTypeDef gpio;
-	USART_InitTypeDef uart;
 
     /* ADC Initialization */
     //RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC, ENABLE);
     gpio.GPIO_Pin = GPIO_Pin_0;
     gpio.GPIO_Mode = GPIO_Mode_AN;
-    GPIO_Init(GPIOA, &gpio);
+    GPIO_Init(GPIOC, &gpio);
 
-
-    USART_StructInit(&uart);
-    uart.USART_BaudRate = 115200;
-    USART_Init(USART2, &uart);
-    USART_Cmd(USART2, ENABLE);
 
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC12, ENABLE);
-    RCC_ADCCLKConfig(RCC_ADC12PLLCLK_Div8);
+    RCC_ADCCLKConfig(RCC_ADC12PLLCLK_Div10);
 
     ADC_StructInit(&adc);
-    adc.ADC_ContinuousConvMode = ENABLE;
+    adc.ADC_ContinuousConvMode = ADC_ContinuousConvMode_Enable;
     adc.ADC_NbrOfRegChannel = 1;
+    adc.ADC_ExternalTrigEventEdge = ADC_ExternalTrigEventEdge_None;
+    adc.ADC_Resolution = ADC_Resolution_12b;
     ADC_Init(ADC1, &adc);
-    ADC_RegularChannelConfig(ADC1, ADC_Channel_1, 1, ADC_SampleTime_61Cycles5);
+    ADC_RegularChannelConfig(ADC1, ADC_Channel_6, 1, ADC_SampleTime_1Cycles5);
+
     ADC_Cmd(ADC1, ENABLE);
 
+    while(!(ADC_GetFlagStatus(ADC1, ADC_FLAG_RDY)));
     ADC_StartConversion(ADC1);
+    //while(ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == RESET){}
+    float v;
+    uint16_t dupa;
 
-    while (1) {
-    	uint16_t adc = ADC_GetConversionValue(ADC1);
-    	float v = (float)adc * 3.3f / 4096.0f;
-    	//printf("ADC = %d (%.3fV)\n", adc, v);
+	while (1) {
+    	dupa = ADC_GetConversionValue(ADC1);
+    	v = (float)dupa * 3.3f / 4096.0f;
+
 
     }
 }
