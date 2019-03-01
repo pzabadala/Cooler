@@ -31,11 +31,11 @@ int main(void) {
 
 	/*Digit GPIO*/
 	GPIO_InitTypeDef gpio_d;
-	/*Init pins for temperature sensors*/
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+	 GPIO_StructInit(&gpio_d);
 	gpio_d.GPIO_Pin = GPIO_Pin_5;
 	gpio_d.GPIO_Mode = GPIO_Mode_OUT;
-	GPIO_Init(GPIOC, &gpio_d);
+	GPIO_Init(GPIOA, &gpio_d);
 
 	TIM_TimeBaseInitTypeDef tim;
 	NVIC_InitTypeDef nvic;
@@ -45,7 +45,7 @@ int main(void) {
 	GPIO_InitTypeDef gpio;
 	/*Init pins for temperature sensors*/
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOC, ENABLE);
-	gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_5;
+	gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;
 	gpio.GPIO_Mode = GPIO_Mode_AN;
 	GPIO_Init(GPIOC, &gpio);
 
