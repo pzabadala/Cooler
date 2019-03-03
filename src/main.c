@@ -83,11 +83,12 @@ int main(void) {
 	ADC_Cmd(ADC2, ENABLE);
 
 	/*PWM and Timer Initialization*/
+	int period = 500 -1;
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 	TIM_TimeBaseStructInit(&tim);
 	tim.TIM_CounterMode = TIM_CounterMode_Up;
 	tim.TIM_Prescaler = 7200 - 1;
-	tim.TIM_Period = 500 - 1;
+	tim.TIM_Period = period;
 	TIM_TimeBaseInit(TIM2, &tim);
 
 	TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
@@ -128,6 +129,14 @@ int main(void) {
 	DAC1_Set_Signal_Value(DAC_signal_value);
 
 	while (1) {
+		for(int i; i< 1000000; i = i+1){
+
+		}
+		if (period <= 0)
+			period = 500-1;
+
+		period --;
+		TIM_SetCompare1(TIM2, period);
 		voltage1 = ADC_GetConversionValue(ADC1);
 		voltage2 = ADC_GetConversionValue(ADC2);
 	}
@@ -137,6 +146,7 @@ int main(void) {
 void TIM2_IRQHandler() {
 	if (TIM_GetITStatus(TIM2, TIM_IT_Update) == SET) {
 		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+
 
 		/*
 		 *
