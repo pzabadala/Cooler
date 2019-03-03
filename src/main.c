@@ -24,6 +24,12 @@
  *
  */
 
+void delay(int time)
+{
+    int i;
+    for (i = 0; i < time * 4000; i++) {}
+}
+
 int main(void) {
 
 	SystemInit();
@@ -35,7 +41,7 @@ int main(void) {
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 	GPIO_StructInit(&gpio_d);
 	gpio_d.GPIO_Pin = GPIO_Pin_5;
-	gpio_d.GPIO_Mode = GPIO_Mode_OUT;
+	gpio_d.GPIO_Mode = GPIO_Mode_AF;
 	GPIO_Init(GPIOA, &gpio_d);
 
 	TIM_TimeBaseInitTypeDef tim;
@@ -87,18 +93,24 @@ int main(void) {
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 	TIM_TimeBaseStructInit(&tim);
 	tim.TIM_CounterMode = TIM_CounterMode_Up;
-	tim.TIM_Prescaler = 7200 - 1;
+	tim.TIM_Prescaler = 7;
 	tim.TIM_Period = period;
 	TIM_TimeBaseInit(TIM2, &tim);
 
-	TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
-	TIM_Cmd(TIM2, ENABLE);
+	//TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
 
-	nvic.NVIC_IRQChannel = TIM2_IRQn;
-	nvic.NVIC_IRQChannelPreemptionPriority = 0;
-	nvic.NVIC_IRQChannelSubPriority = 0;
-	nvic.NVIC_IRQChannelCmd = ENABLE;
-	NVIC_Init(&nvic);
+	TIM_OCInitTypeDef oc_struct;
+	TIM_OCStructInit(&oc_struct);
+	oc_struct.TIM_OCMode = TIM_OCMode_PWM1;
+	oc_struct.TIM_OutputState = TIM_OutputState_Enable;
+	TIM_OC1Init(TIM2, &oc_struct);
+
+	TIM_OC1PreloadConfig(TIM2, TIM_OCPreload_Enable);
+	GPIO_PinAFConfig(GPIOA, GPIO_PinSource5, GPIO_AF_1);
+
+	TIM_Cmd(TIM2, ENABLE);
+	TIM_SetCompare1(TIM2, period);
+
 
 	/*
 	 * DAC Configuration (works on PA4)
@@ -129,12 +141,9 @@ int main(void) {
 	DAC1_Set_Signal_Value(DAC_signal_value);
 
 	while (1) {
-		for(int i; i< 1000000; i = i+1){
-
-		}
+		delay(20);
 		if (period <= 0)
 			period = 500-1;
-
 		period --;
 		TIM_SetCompare1(TIM2, period);
 		voltage1 = ADC_GetConversionValue(ADC1);
@@ -142,21 +151,6 @@ int main(void) {
 	}
 }
 
-// Handling PWM, Fan control module
-void TIM2_IRQHandler() {
-	if (TIM_GetITStatus(TIM2, TIM_IT_Update) == SET) {
-		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
-
-
-		/*
-		 *
-		 */
-		if (GPIO_ReadOutputDataBit(GPIOA, GPIO_Pin_5))
-			GPIO_ResetBits(GPIOA, GPIO_Pin_5);
-		else
-			GPIO_SetBits(GPIOA, GPIO_Pin_5);
-	}
-}
 
 
 /*
