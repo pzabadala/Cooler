@@ -182,16 +182,23 @@ int main(void) {
 
 
 	int32_t pi_signal;
+	short low_pass_filter_counter = 0;
 	while (1) {
 		delay_ms(50);
 		//TIM_SetCompare1(TIM2, period);
 		//TIM_SetCompare2(TIM2, period);
-		voltage1 = ADC_GetConversionValue(ADC1);
-		voltage2 = ADC_GetConversionValue(ADC2);
 
-		int delta_T = (int)(voltage1 - voltage2);
-		pi_signal = pi_fan_regulator(delta_T);
-		set_fan_pwm(pi_signal);
+		voltage1 += ADC_GetConversionValue(ADC1);
+		voltage2 += ADC_GetConversionValue(ADC2);
+		low_pass_filter_counter++;
+
+		if(low_pass_filter_counter == 10){
+			int delta_T = (int)(voltage1/low_pass_filter_counter - voltage2/low_pass_filter_counter);
+			pi_signal = pi_fan_regulator(delta_T);
+			set_fan_pwm(pi_signal);
+			low_pass_filter_counter = 0;
+		}
+
 
 	}
 }
