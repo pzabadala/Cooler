@@ -25,10 +25,12 @@
 #define COOLER_PELTIER_DELTA_T_OPTIMUM 200
 #define COOLER_PELTIER_DELTA_T_MAX 450
 
+#define COOLER_PELTIER_REQUESTED_TMP 175
+
 /*
  *
  */
-#define MAX_INTEGRAL_DELTA_T INT_MAX - 1000
+#define MAX_INTEGRAL INT_MAX - 1000
 
 /**
  * PinOut -> https://raw.githubusercontent.com/wiki/RIOT-OS/RIOT/images/nucleo-f303_pinout.png
@@ -220,7 +222,7 @@ int pi_fan_regulator(int delta_T_voltage){
 
 	current_state = delta_T_voltage - COOLER_PELTIER_DELTA_T_OPTIMUM;
 
-	if( abs(integral_delta_T)< MAX_INTEGRAL_DELTA_T){
+	if( abs(integral_delta_T)< MAX_INTEGRAL){
 		integral_delta_T += current_state;
 	}
 
@@ -228,6 +230,26 @@ int pi_fan_regulator(int delta_T_voltage){
 	fan_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
 	return fan_control_signal;
 }
+
+
+
+int pi_peltier_regulator(int current_tmp){
+
+	static int32_t integral_delta_T = 0;
+	int32_t peltier_control_signal = 0;
+	int16_t current_state = 0;
+
+	current_state = current_tmp - COOLER_PELTIER_REQUESTED_TMP;
+
+	if( abs(integral_delta_T)< MAX_INTEGRAL){
+		integral_delta_T += current_state;
+	}
+
+
+	peltier_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
+	return peltier_control_signal;
+}
+
 
 
 /**
