@@ -22,15 +22,15 @@
  * Tem. diff between heat side and cool side should be about COOLER_PELTIER_DELTA_T_OPTIMUM/10 C
  * but no more than COOLER_PELTIER_DELTA_T_MAX/10 C
  */
-#define COOLER_PELTIER_DELTA_T_OPTIMUM 200
-#define COOLER_PELTIER_DELTA_T_MAX 450
+#define COOLER_PELTIER_DELTA_T_OPTIMUM 250
+#define COOLER_PELTIER_DELTA_T_MAX 350
 
 #define COOLER_PELTIER_REQUESTED_TMP 175
 
 /*
  *
  */
-#define MAX_INTEGRAL INT_MAX - 1000
+#define MAX_FAN_INTEGRAL 20000
 
 /**
  * PinOut -> https://raw.githubusercontent.com/wiki/RIOT-OS/RIOT/images/nucleo-f303_pinout.png
@@ -141,7 +141,7 @@ int main(void) {
 
 	TIM_OCInitTypeDef oc_struct;
 	TIM_OCStructInit(&oc_struct);
-	oc_struct.TIM_OCMode = TIM_OCMode_PWM2;
+	oc_struct.TIM_OCMode = TIM_OCMode_PWM1;
 	oc_struct.TIM_OutputState = TIM_OutputState_Enable;
 	TIM_OC1Init(TIM2, &oc_struct);
 	TIM_OC2Init(TIM2, &oc_struct);
@@ -172,8 +172,8 @@ int main(void) {
 	ADC_StartConversion(ADC1);
 	ADC_StartConversion(ADC2);
 
-	int voltage1;
-	int voltage2;
+	int voltage1 = 0;
+	int voltage2 = 0;
 
 	//uint16_t DAC_signal_value = 254;
 
@@ -186,7 +186,7 @@ int main(void) {
 	int32_t pi_signal;
 	short low_pass_filter_counter = 0;
 	while (1) {
-		delay_ms(50);
+		delay_ms(500);
 		//TIM_SetCompare1(TIM2, period);
 		//TIM_SetCompare2(TIM2, period);
 
@@ -194,11 +194,13 @@ int main(void) {
 		voltage2 += ADC_GetConversionValue(ADC2);
 		low_pass_filter_counter++;
 
-		if(low_pass_filter_counter == 10){
+		if(low_pass_filter_counter >= 10){
 			int delta_T = (int)(voltage1/low_pass_filter_counter - voltage2/low_pass_filter_counter);
 			pi_signal = pi_fan_regulator(delta_T);
 			set_fan_pwm(pi_signal);
 			low_pass_filter_counter = 0;
+			voltage1 = 0;
+			voltage2 = 0;
 		}
 
 
@@ -222,12 +224,12 @@ int pi_fan_regulator(int delta_T_voltage){
 
 	current_state = delta_T_voltage - COOLER_PELTIER_DELTA_T_OPTIMUM;
 
-	if( abs(integral_delta_T)< MAX_INTEGRAL){
+	if( abs(integral_delta_T)< MAX_FAN_INTEGRAL){
 		integral_delta_T += current_state;
 	}
 
 
-	fan_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
+	fan_control_signal = (0.3)*current_state + (0.7)*integral_delta_T;
 	return fan_control_signal;
 }
 
@@ -241,7 +243,7 @@ int pi_peltier_regulator(int current_tmp){
 
 	current_state = current_tmp - COOLER_PELTIER_REQUESTED_TMP;
 
-	if( abs(integral_delta_T)< MAX_INTEGRAL){
+	if( abs(integral_delta_T)< MAX_FAN_INTEGRAL){
 		integral_delta_T += current_state;
 	}
 
@@ -264,10 +266,10 @@ void set_fan_pwm(int pi_control_signal) {
 	}else if(pi_control_signal >= COOLER_PELTIER_DELTA_T_MAX){
 		pwm = 255; //max 8 bit value (fan full power)
 	}else{
-		pwm = pi_control_signal/COOLER_PELTIER_DELTA_T_MAX  * 255;
+		pwm = (float)pi_control_signal/(float)COOLER_PELTIER_DELTA_T_MAX  * 255;
 	}
 
-	TIM_SetCompare1(TIM2, pwm);
+	TIM_SetCompare2(TIM2, pwm);
 }
 
 /*
