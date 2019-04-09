@@ -22,19 +22,22 @@
  * Tem. diff between heat side and cool side should be about COOLER_PELTIER_DELTA_T_OPTIMUM/10 C
  * but no more than COOLER_PELTIER_DELTA_T_MAX/10 C
  */
-#define COOLER_PELTIER_DELTA_T_OPTIMUM 200
-#define COOLER_PELTIER_DELTA_T_MAX 450
+#define COOLER_PELTIER_DELTA_T_OPTIMUM 250
+#define COOLER_PELTIER_DELTA_T_MAX 350
+
+#define COOLER_PELTIER_REQUESTED_TMP 175
 
 /*
  *
  */
-#define MAX_INTEGRAL_DELTA_T INT_MAX - 1000
+#define MAX_FAN_INTEGRAL 20000
 
 /**
  * PinOut -> https://raw.githubusercontent.com/wiki/RIOT-OS/RIOT/images/nucleo-f303_pinout.png
  * DataSheet -> https://www.st.com/resource/en/datasheet/stm32f303re.pdf
  * A5 -> PC0 -> ADC1 Channel 6
  * A4 -> PC1 -> ADC2 Channel 7
+ * A3 -> PB0 -> ADC3 Channel 12
  * A2 -> PA.4 -> DAC
  * Dioda -> PA.5 -> PWM
  * A1 -> PA1 - > PWM
@@ -71,18 +74,19 @@ int main(void) {
 
 	ADC_InitTypeDef adc1;
 	ADC_InitTypeDef adc2;
+	ADC_InitTypeDef adc3;
 
-	/*Digit ADC GPIO*/
-	GPIO_InitTypeDef gpio_d, gpio_a1;
+	/*PWM GPIO*/
+	GPIO_InitTypeDef gpio_d, gpio_a;
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 	GPIO_StructInit(&gpio_d);
-	GPIO_StructInit(&gpio_a1);
+	GPIO_StructInit(&gpio_a);
 	gpio_d.GPIO_Pin = GPIO_Pin_5;
 	gpio_d.GPIO_Mode = GPIO_Mode_AF;
-	gpio_a1.GPIO_Pin = GPIO_Pin_1;
-	gpio_a1.GPIO_Mode = GPIO_Mode_AF;
+	gpio_a.GPIO_Pin = GPIO_Pin_1;
+	gpio_a.GPIO_Mode = GPIO_Mode_AF;
 	GPIO_Init(GPIOA, &gpio_d);
-	GPIO_Init(GPIOA, &gpio_a1);
+	GPIO_Init(GPIOA, &gpio_a);
 
 	TIM_TimeBaseInitTypeDef tim;
 
@@ -102,8 +106,17 @@ int main(void) {
 	gpio.GPIO_Mode = GPIO_Mode_AN;
 	GPIO_Init(GPIOC, &gpio);
 
+
+	/*Analog GPIO, Main temperature*/
+	GPIO_InitTypeDef gpio_b;
+	/*Init pins for temperature sensors*/
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
+	gpio_b.GPIO_Pin = GPIO_Pin_0;
+	gpio_b.GPIO_Mode = GPIO_Mode_AN;
+	GPIO_Init(GPIOB, &gpio_b);
+
 	/*
-	 * ADC's modules init (temperature1 and temperature2)
+	 * ADC's modules init (temperature1 and temperature2 (hot and cool peltier sides) for fans controlling)
 	 */
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC12, ENABLE);
 	RCC_ADCCLKConfig(RCC_ADC12PLLCLK_Div10);
@@ -126,6 +139,22 @@ int main(void) {
 	ADC_RegularChannelConfig(ADC2, ADC_Channel_7, 1, ADC_SampleTime_1Cycles5);
 	ADC_Cmd(ADC2, ENABLE);
 
+	/*
+	* ADC modules init (main temperature for main power supplier controlling)
+	*/
+
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC34, ENABLE);
+	RCC_ADCCLKConfig(RCC_ADC34PLLCLK_Div10);
+
+	ADC_StructInit(&adc3);
+	adc3.ADC_ContinuousConvMode = ADC_ContinuousConvMode_Enable;
+	adc3.ADC_NbrOfRegChannel = 1;
+	adc3.ADC_ExternalTrigEventEdge = ADC_ExternalTrigEventEdge_None;
+	adc3.ADC_Resolution = ADC_Resolution_12b;
+	ADC_Init(ADC3, &adc3);
+	ADC_RegularChannelConfig(ADC3, ADC_Channel_12, 1, ADC_SampleTime_1Cycles5);
+	ADC_Cmd(ADC3, ENABLE);
+
 	/*PWM and Timer Initialization*/
 	int period = COOLER_BASE_PWM_FAN_PERIOD;
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
@@ -139,7 +168,7 @@ int main(void) {
 
 	TIM_OCInitTypeDef oc_struct;
 	TIM_OCStructInit(&oc_struct);
-	oc_struct.TIM_OCMode = TIM_OCMode_PWM2;
+	oc_struct.TIM_OCMode = TIM_OCMode_PWM1;
 	oc_struct.TIM_OutputState = TIM_OutputState_Enable;
 	TIM_OC1Init(TIM2, &oc_struct);
 	TIM_OC2Init(TIM2, &oc_struct);
@@ -165,13 +194,17 @@ int main(void) {
 	DAC_Cmd(DAC1, DAC_Channel_1, ENABLE);
 
 	while (!((ADC_GetFlagStatus(ADC1, ADC_FLAG_RDY)
-			& ADC_GetFlagStatus(ADC2, ADC_FLAG_RDY))))
+			& ADC_GetFlagStatus(ADC2, ADC_FLAG_RDY)
+			& ADC_GetFlagStatus(ADC3, ADC_FLAG_RDY))))
 		;
 	ADC_StartConversion(ADC1);
 	ADC_StartConversion(ADC2);
+	ADC_StartConversion(ADC3);
 
-	int voltage1;
-	int voltage2;
+	int peltier_hot_tmp_voltage = 0;
+	int peltier_cool_tmp_pelvoltage = 0;
+
+	int main_tmp_voltage = 0;
 
 	//uint16_t DAC_signal_value = 254;
 
@@ -182,16 +215,28 @@ int main(void) {
 
 
 	int32_t pi_signal;
+	short low_pass_filter_counter = 0;
 	while (1) {
 		delay_ms(50);
 		//TIM_SetCompare1(TIM2, period);
 		//TIM_SetCompare2(TIM2, period);
-		voltage1 = ADC_GetConversionValue(ADC1);
-		voltage2 = ADC_GetConversionValue(ADC2);
 
-		int delta_T = (int)(voltage1 - voltage2);
-		pi_signal = pi_fan_regulator(delta_T);
-		set_fan_pwm(pi_signal);
+		peltier_hot_tmp_voltage += ADC_GetConversionValue(ADC1);
+		peltier_cool_tmp_pelvoltage += ADC_GetConversionValue(ADC2);
+		main_tmp_voltage += ADC_GetConversionValue(ADC3);
+
+		low_pass_filter_counter++;
+
+		if(low_pass_filter_counter >= 100){
+			int delta_T = (int)(peltier_hot_tmp_voltage/low_pass_filter_counter - peltier_cool_tmp_pelvoltage/low_pass_filter_counter);
+			pi_signal = pi_fan_regulator(delta_T);
+			set_fan_pwm(pi_signal);
+			low_pass_filter_counter = 0;
+			peltier_hot_tmp_voltage = 0;
+			peltier_cool_tmp_pelvoltage = 0;
+			main_tmp_voltage = 0;
+		}
+
 
 	}
 }
@@ -213,14 +258,34 @@ int pi_fan_regulator(int delta_T_voltage){
 
 	current_state = delta_T_voltage - COOLER_PELTIER_DELTA_T_OPTIMUM;
 
-	if( abs(integral_delta_T)< MAX_INTEGRAL_DELTA_T){
+	if( abs(integral_delta_T)< MAX_FAN_INTEGRAL){
 		integral_delta_T += current_state;
 	}
 
 
-	fan_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
+	fan_control_signal = (0.3)*current_state + (0.7)*integral_delta_T;
 	return fan_control_signal;
 }
+
+
+
+int pi_peltier_regulator(int current_tmp){
+
+	static int32_t integral_delta_T = 0;
+	int32_t peltier_control_signal = 0;
+	int16_t current_state = 0;
+
+	current_state = current_tmp - COOLER_PELTIER_REQUESTED_TMP;
+
+	if( abs(integral_delta_T)< MAX_FAN_INTEGRAL){
+		integral_delta_T += current_state;
+	}
+
+
+	peltier_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
+	return peltier_control_signal;
+}
+
 
 
 /**
@@ -235,10 +300,10 @@ void set_fan_pwm(int pi_control_signal) {
 	}else if(pi_control_signal >= COOLER_PELTIER_DELTA_T_MAX){
 		pwm = 255; //max 8 bit value (fan full power)
 	}else{
-		pwm = pi_control_signal/COOLER_PELTIER_DELTA_T_MAX  * 255;
+		pwm = (float)pi_control_signal/(float)COOLER_PELTIER_DELTA_T_MAX  * 255;
 	}
 
-	TIM_SetCompare1(TIM2, pwm);
+	TIM_SetCompare2(TIM2, pwm);
 }
 
 /*
