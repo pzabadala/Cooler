@@ -37,6 +37,7 @@
  * DataSheet -> https://www.st.com/resource/en/datasheet/stm32f303re.pdf
  * A5 -> PC0 -> ADC1 Channel 6
  * A4 -> PC1 -> ADC2 Channel 7
+ * A3 -> PB0 -> ADC3 Channel 12
  * A2 -> PA.4 -> DAC
  * Dioda -> PA.5 -> PWM
  * A1 -> PA1 - > PWM
@@ -73,18 +74,19 @@ int main(void) {
 
 	ADC_InitTypeDef adc1;
 	ADC_InitTypeDef adc2;
+	ADC_InitTypeDef adc3;
 
-	/*Digit ADC GPIO*/
-	GPIO_InitTypeDef gpio_d, gpio_a1;
+	/*PWM GPIO*/
+	GPIO_InitTypeDef gpio_d, gpio_a;
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
 	GPIO_StructInit(&gpio_d);
-	GPIO_StructInit(&gpio_a1);
+	GPIO_StructInit(&gpio_a);
 	gpio_d.GPIO_Pin = GPIO_Pin_5;
 	gpio_d.GPIO_Mode = GPIO_Mode_AF;
-	gpio_a1.GPIO_Pin = GPIO_Pin_1;
-	gpio_a1.GPIO_Mode = GPIO_Mode_AF;
+	gpio_a.GPIO_Pin = GPIO_Pin_1;
+	gpio_a.GPIO_Mode = GPIO_Mode_AF;
 	GPIO_Init(GPIOA, &gpio_d);
-	GPIO_Init(GPIOA, &gpio_a1);
+	GPIO_Init(GPIOA, &gpio_a);
 
 	TIM_TimeBaseInitTypeDef tim;
 
@@ -104,8 +106,17 @@ int main(void) {
 	gpio.GPIO_Mode = GPIO_Mode_AN;
 	GPIO_Init(GPIOC, &gpio);
 
+
+	/*Analog GPIO, Main temperature*/
+	GPIO_InitTypeDef gpio_b;
+	/*Init pins for temperature sensors*/
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB, ENABLE);
+	gpio_b.GPIO_Pin = GPIO_Pin_0;
+	gpio_b.GPIO_Mode = GPIO_Mode_AN;
+	GPIO_Init(GPIOB, &gpio_b);
+
 	/*
-	 * ADC's modules init (temperature1 and temperature2)
+	 * ADC's modules init (temperature1 and temperature2 (hot and cool peltier sides) for fans controlling)
 	 */
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC12, ENABLE);
 	RCC_ADCCLKConfig(RCC_ADC12PLLCLK_Div10);
@@ -127,6 +138,22 @@ int main(void) {
 	ADC_Init(ADC2, &adc2);
 	ADC_RegularChannelConfig(ADC2, ADC_Channel_7, 1, ADC_SampleTime_1Cycles5);
 	ADC_Cmd(ADC2, ENABLE);
+
+	/*
+	* ADC modules init (main temperature for main power supplier controlling)
+	*/
+
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC34, ENABLE);
+	RCC_ADCCLKConfig(RCC_ADC34PLLCLK_Div10);
+
+	ADC_StructInit(&adc3);
+	adc3.ADC_ContinuousConvMode = ADC_ContinuousConvMode_Enable;
+	adc3.ADC_NbrOfRegChannel = 1;
+	adc3.ADC_ExternalTrigEventEdge = ADC_ExternalTrigEventEdge_None;
+	adc3.ADC_Resolution = ADC_Resolution_12b;
+	ADC_Init(ADC3, &adc3);
+	ADC_RegularChannelConfig(ADC3, ADC_Channel_12, 1, ADC_SampleTime_1Cycles5);
+	ADC_Cmd(ADC3, ENABLE);
 
 	/*PWM and Timer Initialization*/
 	int period = COOLER_BASE_PWM_FAN_PERIOD;
@@ -167,13 +194,17 @@ int main(void) {
 	DAC_Cmd(DAC1, DAC_Channel_1, ENABLE);
 
 	while (!((ADC_GetFlagStatus(ADC1, ADC_FLAG_RDY)
-			& ADC_GetFlagStatus(ADC2, ADC_FLAG_RDY))))
+			& ADC_GetFlagStatus(ADC2, ADC_FLAG_RDY)
+			& ADC_GetFlagStatus(ADC3, ADC_FLAG_RDY))))
 		;
 	ADC_StartConversion(ADC1);
 	ADC_StartConversion(ADC2);
+	ADC_StartConversion(ADC3);
 
-	int voltage1 = 0;
-	int voltage2 = 0;
+	int peltier_hot_tmp_voltage = 0;
+	int peltier_cool_tmp_pelvoltage = 0;
+
+	int main_tmp_voltage = 0;
 
 	//uint16_t DAC_signal_value = 254;
 
@@ -186,21 +217,24 @@ int main(void) {
 	int32_t pi_signal;
 	short low_pass_filter_counter = 0;
 	while (1) {
-		delay_ms(500);
+		delay_ms(50);
 		//TIM_SetCompare1(TIM2, period);
 		//TIM_SetCompare2(TIM2, period);
 
-		voltage1 += ADC_GetConversionValue(ADC1);
-		voltage2 += ADC_GetConversionValue(ADC2);
+		peltier_hot_tmp_voltage += ADC_GetConversionValue(ADC1);
+		peltier_cool_tmp_pelvoltage += ADC_GetConversionValue(ADC2);
+		main_tmp_voltage += ADC_GetConversionValue(ADC3);
+
 		low_pass_filter_counter++;
 
-		if(low_pass_filter_counter >= 10){
-			int delta_T = (int)(voltage1/low_pass_filter_counter - voltage2/low_pass_filter_counter);
+		if(low_pass_filter_counter >= 100){
+			int delta_T = (int)(peltier_hot_tmp_voltage/low_pass_filter_counter - peltier_cool_tmp_pelvoltage/low_pass_filter_counter);
 			pi_signal = pi_fan_regulator(delta_T);
 			set_fan_pwm(pi_signal);
 			low_pass_filter_counter = 0;
-			voltage1 = 0;
-			voltage2 = 0;
+			peltier_hot_tmp_voltage = 0;
+			peltier_cool_tmp_pelvoltage = 0;
+			main_tmp_voltage = 0;
 		}
 
 
