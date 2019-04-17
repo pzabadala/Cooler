@@ -206,16 +206,17 @@ int main(void) {
 
 	int main_tmp_voltage = 0;
 
-	//uint16_t DAC_signal_value = 254;
+	uint32_t DAC_signal_value = 255;
 
 	/*
 	 * Set signal value for DAC (Peltier voltage)
 	 */
-	//DAC1_Set_Signal_Value(DAC_signal_value);
+	DAC1_Set_Signal_Value(DAC_signal_value);
 
 
 	int32_t pi_signal;
 	short low_pass_filter_counter = 0;
+	uint16_t dac_value = 0;
 	while (1) {
 		delay_ms(50);
 		//TIM_SetCompare1(TIM2, period);
@@ -224,17 +225,23 @@ int main(void) {
 		peltier_hot_tmp_voltage += ADC_GetConversionValue(ADC1);
 		peltier_cool_tmp_pelvoltage += ADC_GetConversionValue(ADC2);
 		main_tmp_voltage += ADC_GetConversionValue(ADC3);
-
 		low_pass_filter_counter++;
+
+
+
 
 		if(low_pass_filter_counter >= 100){
 			int delta_T = (int)(peltier_hot_tmp_voltage/low_pass_filter_counter - peltier_cool_tmp_pelvoltage/low_pass_filter_counter);
 			pi_signal = pi_fan_regulator(delta_T);
 			set_fan_pwm(pi_signal);
+
+			dac_value = 0;
 			low_pass_filter_counter = 0;
 			peltier_hot_tmp_voltage = 0;
 			peltier_cool_tmp_pelvoltage = 0;
 			main_tmp_voltage = 0;
+
+
 		}
 
 
@@ -282,7 +289,15 @@ int pi_peltier_regulator(int current_tmp){
 	}
 
 
-	peltier_control_signal = (0.7)*current_state + (0.3)*integral_delta_T;
+	peltier_control_signal = (0.3)*current_state + (0.7)*integral_delta_T;
+
+	/*
+	 * DAC is 8 bit value between 0 and 255 (0 - 3.3V)
+	 * Power suppler accepts input 0 - 5.5V
+	 * Voltage Apmlifier -> x2
+	 */
+
+
 	return peltier_control_signal;
 }
 
@@ -307,9 +322,20 @@ void set_fan_pwm(int pi_control_signal) {
 }
 
 /*
- * Set digit value [8 bit conversion (0 - 255)] to convert into analog signal [2.4 - 3.6 V]
+ * Set digit value [8 bit conversion (0 - 255)] to convert into analog signal [0 - 3.3 V]
  */
-void DAC1_Set_Signal_Value(uint16_t value) {
+void DAC1_Set_Signal_Value(uint32_t value) {
+
+	/*
+	 * 3.3/255
+	 * Amplifier is x2 so max signal value is 193 (193 - > 5V)
+	 *
+	 */
+	if (value < 0){
+		value = 0;
+	} else if (value > 190){
+		value = 190;
+	}
 
 	DAC_SoftwareTriggerCmd(DAC1, DAC_Channel_1, DISABLE);
 	DAC_SetChannel1Data(DAC1, DAC_Align_8b_R, value);
