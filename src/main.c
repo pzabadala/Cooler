@@ -215,6 +215,7 @@ int main(void) {
 
 
 	int32_t pi_signal;
+	int32_t pi_peltier_signal;
 	short low_pass_filter_counter = 0;
 	uint16_t dac_value = 0;
 	while (1) {
@@ -235,12 +236,13 @@ int main(void) {
 			pi_signal = pi_fan_regulator(delta_T);
 			set_fan_pwm(pi_signal);
 
-			dac_value = 0;
+			pi_peltier_signal = pi_peltier_regulator(main_tmp_voltage/low_pass_filter_counter);
+			DAC1_Set_Signal_Value(pi_peltier_signal);
+
 			low_pass_filter_counter = 0;
 			peltier_hot_tmp_voltage = 0;
 			peltier_cool_tmp_pelvoltage = 0;
 			main_tmp_voltage = 0;
-
 
 		}
 
