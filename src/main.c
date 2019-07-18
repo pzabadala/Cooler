@@ -27,6 +27,14 @@
 
 #define COOLER_PELTIER_REQUESTED_TMP 175
 
+
+/*
+ * AMPLIFIER x100
+ */
+#define AMPLIFIER 680
+
+#define MAX_POWER_SUPP_VOLTAGE_INPUT 5
+
 /*
  *
  */
@@ -295,7 +303,7 @@ int pi_peltier_regulator(int current_tmp){
 
 	/*
 	 * DAC is 8 bit value between 0 and 255 (0 - 3.3V)
-	 * Power suppler accepts input 0 - 5.5V
+	 * Power suppler accepts input 0 - 5.0V
 	 * Voltage Apmlifier -> x2
 	 */
 
@@ -325,18 +333,25 @@ void set_fan_pwm(int pi_control_signal) {
 
 /*
  * Set digit value [8 bit conversion (0 - 255)] to convert into analog signal [0 - 3.3 V]
+ * Amplifier = x6.8
+ * bit_resolution*x = MAX_POWER_SUPPLIER_INPUT/Amplifier*3.3
+ *
  */
 void DAC1_Set_Signal_Value(uint32_t value) {
 
 	/*
 	 * 3.3/255
-	 * Amplifier is x2 so max signal value is 193 (193 - > 5V)
+	 * Amplifier is x6.8 so max signal value is 58 (58 - > 5V)
+	 *
+	 * max = MAX_POWER_SUPPLIER_INPUT/Amplifier * DAC_reesolution / procesor_max_output
 	 *
 	 */
+	int max = MAX_POWER_SUPP_VOLTAGE_INPUT / AMPLIFIER / 100 * 255 / 3.3;
+
 	if (value < 0){
 		value = 0;
-	} else if (value > 190){
-		value = 190;
+	} else if (value > max){
+		value = max;
 	}
 
 	DAC_SoftwareTriggerCmd(DAC1, DAC_Channel_1, DISABLE);
